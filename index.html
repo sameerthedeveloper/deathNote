@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Death Note Episodes</title>
+<title>Death Note </title>
 <script src="https://cdn.tailwindcss.com"></script>
 <meta name="theme-color" content="#141414">
 <style>
@@ -44,20 +44,38 @@
   <span>Loading episodes...</span>
 </div>
 
-<header class="bg-gray-900 p-4 flex flex-col md:flex-row justify-between items-start md:items-center">
+<header  class="bg-gray-900 p-4 flex flex-col md:flex-row justify-between items-start md:items-center">
   <div>
-    <h1 class="text-3xl font-bold text-red-600">Death Note Complete</h1>
+    <h1 class="text-3xl font-bold text-red-600">Death Note </h1>
     <p class="text-gray-400 mt-1">2006 | 37 Episodes | Anime | Creator: Tsugumi Ohba, Takeshi Obata</p>
   </div>
 </header>
 
+<!-- Watch History -->
+<div id="watch-history" class="p-4" style="display:none;">
+  <div class="flex justify-between">
+    <h2 class="text-xl font-bold text-red-600 mb-2">Recently Watched</h2>
+    <button id="clear-history" class="mt-2 px-3 py-1 bg-red-600 text-white rounded">Clear History</button>
+  </div>
+  <div id="history-list" class="flex flex-wrap gap-2"></div>
+</div>
+
+
 <main class="p-4">
-  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4"></div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
 </main>
 
+<!-- Video Player Modal with Loader -->
 <div id="player-modal" class="flex">
   <div class="w-full max-w-3xl relative">
     <button onclick="closePlayer()" class="absolute top-2 right-2 text-white text-3xl font-bold z-50">&times;</button>
+
+    <!-- Video Loader -->
+    <div id="video-loader" class="absolute inset-0 bg-black bg-opacity-70 flex justify-center items-center z-40 flex-col">
+      <div class="spinner"></div>
+      <span class="text-white">Loading video...</span>
+    </div>
+
     <video id="video-player" controls class="w-full rounded-lg shadow-lg"></video>
   </div>
 </div>
@@ -110,22 +128,98 @@ function loadEpisodes() {
   });
 }
 
+// Watch History with Timestamp
+const historyKey = "deathNoteWatchHistory";
+
+function saveToHistory(ep, time) {
+  let history = JSON.parse(localStorage.getItem(historyKey)) || [];
+  history = history.filter(e => e.name !== ep); // remove if exists
+  history.unshift({ name: ep, time: time || 0 }); // add to top
+  if (history.length > 10) history.pop(); // keep last 10
+  localStorage.setItem(historyKey, JSON.stringify(history));
+  renderHistory();
+}
+
+function renderHistory() {
+  const historyList = document.getElementById("history-list");
+  historyList.innerHTML = "";
+  const history = JSON.parse(localStorage.getItem(historyKey)) || [];
+
+  // Show or hide watch-history section
+  const watchSection = document.getElementById("watch-history");
+  watchSection.style.display = history.length > 0 ? "block" : "none";
+
+  history.forEach(epObj => {
+    const ep = epObj.name;
+    const epCode = ep.split('.mp4')[0];
+
+    const thumbFiles = thumbNums.map(n => `${epCode}_000001.jpg`);
+    const thumb = thumbBase + shuffle(thumbFiles)[0];
+
+    const card = document.createElement("div");
+    card.className = "episode-card cursor-pointer rounded overflow-hidden shadow-lg bg-gray-800 w-32";
+    card.innerHTML = `
+      <img src="${thumb}" alt="${ep}" class="w-full h-24 object-cover">
+      <div class="p-1">
+        <h3 class="text-xs font-bold">${ep.replace('.mp4','')}</h3>
+      </div>
+    `;
+    card.onclick = () => playEpisode(ep, epObj.time);
+    historyList.appendChild(card);
+  });
+}
+
+// Clear history
+document.getElementById("clear-history").onclick = () => {
+  localStorage.removeItem(historyKey);
+  renderHistory();
+}
+
 // Show loader until episodes are added
 loadEpisodes().then(() => {
   document.getElementById('loader').style.display = 'none';
+  renderHistory();
 });
 
-function playEpisode(ep) {
+function playEpisode(ep, startTime = 0) {
   const player = document.getElementById("video-player");
+  const videoLoader = document.getElementById("video-loader");
+
+  // Show loader
+  videoLoader.style.display = "flex";
+
   player.src = `https://archive.org/download/death-note-complete-2006-2007/${ep}`;
+  player.setAttribute('data-episode', ep); // store current episode
   document.getElementById("player-modal").style.display = "flex";
-  player.play();
+  player.currentTime = startTime;
+
+  // Wait for video to be ready
+  player.addEventListener('canplay', function handleCanPlay() {
+    videoLoader.style.display = "none"; // hide loader
+    player.play();
+    player.removeEventListener('canplay', handleCanPlay);
+  });
+
+  // Save timestamp every 5 seconds
+  if (player.updateInterval) clearInterval(player.updateInterval);
+  player.updateInterval = setInterval(() => {
+    saveToHistory(ep, player.currentTime);
+  }, 5000);
 }
 
 function closePlayer() {
   const player = document.getElementById("video-player");
+  if (player.updateInterval) {
+    clearInterval(player.updateInterval);
+    player.updateInterval = null;
+  }
+
+  const ep = player.getAttribute('data-episode');
+  if (ep) saveToHistory(ep, player.currentTime);
+
   player.pause();
   player.src = "";
+  player.removeAttribute('data-episode');
   document.getElementById("player-modal").style.display = "none";
 }
 </script>
